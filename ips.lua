@@ -1,4 +1,4 @@
-#!/usr/local/bin/lua
+#!/usr/local/bin/luajit
 
 args = args or {...}
 
@@ -66,7 +66,8 @@ function strtohex(s, max)
 	return d
 end
 
-assert(readPatchChunk(5) == 'PATCH')
+local signature = readPatchChunk(5)
+assert(signature == 'PATCH', "got bad signature: "..tostring(signature))
 
 while true do
 	local offset = readPatchChunk(3)
