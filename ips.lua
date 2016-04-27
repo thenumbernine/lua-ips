@@ -1,4 +1,4 @@
-#!/usr/local/bin/luajit
+#!/usr/bin/env lua
 
 args = args or {...}
 
