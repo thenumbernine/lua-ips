@@ -2,7 +2,7 @@
 
 args = args or {...}
 
-require 'ext.init'
+require 'ext'
 
 expectedStr = 'expected ips <datafile> <patchfile> <outfile>, got '..table.concat(args, ' ')
 datafile = assert(args[1], expectedStr)
