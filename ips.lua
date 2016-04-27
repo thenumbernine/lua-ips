@@ -9,8 +9,8 @@ datafile = assert(args[1], expectedStr)
 patchfile = assert(args[2], expectedStr)
 outfile = assert(args[3], expectedStr)
 
-data = assert(io.readfile(datafile))
-patch = assert(io.readfile(patchfile))
+data = assert(file[datafile])
+patch = assert(file[patchfile])
 
 local verbose = not ipsOnProgress -- if no callback then print
 
@@ -95,4 +95,4 @@ while true do
 	end
 end
 
-io.writefile(outfile, data)
+file[outfile] = data
