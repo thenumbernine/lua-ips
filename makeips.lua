@@ -1,4 +1,4 @@
-#!/usr/local/bin/lua
+#!/usr/bin/env lua
 
 args = {...}
 
@@ -22,7 +22,7 @@ local charProcessor = coroutine.create(function()
 		-- I really would use coroutine.yield, but as lexers go, you need a N-state buffer ... here's my 1-state buffer:
 		nextModified = modifiedData:csub(charProcessorIndex, 1)	--csub is sub but (0-based-first, size) rather than (1-based-first, 1-based-last)
 		nextOriginal = originalData:csub(charProcessorIndex, 1)	-- (so it's similar to C-style 0-based-addressing)
-		if nextModified ~= nextOriginal then print('char '..charProcessorIndex..' differ') end
+--		if nextModified ~= nextOriginal then print('char '..charProcessorIndex..' differ') end
 		-- so what's there to yield?
 		coroutine.yield()
 		charProcessorIndex = charProcessorIndex + 1
@@ -31,7 +31,7 @@ local charProcessor = coroutine.create(function()
 	nextOriginal = nil
 end)
 -- get the first chunk
-coroutine.resume(charProcessor)
+charProcessor:resume()
 
 patch = table()
 
@@ -53,10 +53,12 @@ function processDifference()
 	print('patch start '..location)
 	local thisPatch = table{nextModified}
 	while true do
-		coroutine.resume(charProcessor)
+		charProcessor:resume()
 		if nextModified == ''		-- modified EOF ... should this happen? can IPS support shrinking files?
 		or nextModified == nil		-- both EOF's
-		or nextModified == nextOriginal then		-- equality -- our difference stretch has stopped
+		or nextModified == nextOriginal -- equality -- our difference stretch has stopped
+		or charProcessorIndex - location >= 65535 
+		then
 			break
 		end
 		thisPatch:insert(nextModified)
@@ -64,7 +66,8 @@ function processDifference()
 	print('patch end '..charProcessorIndex)
 	local size = charProcessorIndex - location
 	assert(size == #thisPatch, "patch size is "..#thisPatch.." loc diff is "..size)
-	
+	assert(size <= 65536, "patch is too big")
+
 	local entry = table()
 	entry:insert(numberToRaw(location, 3))
 	entry:insert(numberToRaw(size, 2))
@@ -81,7 +84,7 @@ while nextModified ~= nil do
 	if nextModified ~= nextOriginal then
 		processDifference()
 	else
-		coroutine.resume(charProcessor)
+		charProcessor:resume()
 	end
 end
 
