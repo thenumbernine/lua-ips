@@ -10,6 +10,7 @@ expectedStr = 'expected ips <datafile> <patchfile> <outfile>, got '..table.conca
 datafile = assert(args[1], expectedStr)
 patchfile = assert(args[2], expectedStr)
 outfile = assert(args[3], expectedStr)
+local showall = args[4]	-- if this is empty then truncate long output strings
 
 data = assert(file[datafile])
 patch = assert(file[patchfile])
@@ -55,7 +56,7 @@ end
 
 function strtohex(s, max)
 	local d = ''
-	if not max then
+	if showall or not max then
 		max = #s
 	else
 		if max > #s then max = #s end
