@@ -4,7 +4,7 @@ local outfile = arg[2]
 
 local file = require 'ext.file'
 
-local d = file[infile]
+local d = file(infile):read()
 assert(#d % 0x1000 == 0, "found a header of size "..(#d % 0x1000))
 
 local s8k = math.floor(#d / (8*1024))
@@ -15,4 +15,4 @@ local flags = 0
 local header = string.char(losize) .. string.char(hisize) .. string.char(flags) .. string.char(0):rep(509)
 assert(#header == 0x200)
 
-file[outfile] = header .. d
+file(outfile):write(header .. d)
