@@ -12,8 +12,8 @@ patchfile = assert(args[2], expectedStr)
 outfile = assert(args[3], expectedStr)
 local showall = args[4]	-- if this is empty then truncate long output strings
 
-data = assert(file[datafile])
-patch = assert(file[patchfile])
+data = assert(file(datafile):read())
+patch = assert(file(patchfile):read())
 
 local verbose = not ipsOnProgress -- if no callback then print
 
@@ -104,7 +104,7 @@ if sig == 'BPS1' then
 		local value = readVarInt()
 		local op = bit.band(value, 3)
 		local length = bit.rshift(value, 2) + 1
-print('ofs '..hex(writeOffset)..' op '..op..' len '..hex(length))
+print('ofs '..hex(writeOffset)..'/'..hex(targetsize)..' op '..op..' len '..hex(length))
 		if op == 0 then		-- source read
 			--target_buf[writeOffset:writeOffset+item.bytespan] = source_buf[writeOffset:writeOffset+item.bytespan]
 			target = replaceSubset(target, data:sub(writeOffset+1, writeOffset+length), writeOffset+1)
@@ -135,7 +135,7 @@ print('ofs '..hex(writeOffset)..' op '..op..' len '..hex(length))
 		writeOffset = writeOffset + length
 	end
 print'done'	
-	file[outfile] = target
+	file(outfile):write(target)
 else
 	sig = sig .. readPatchChunk(1)
 	assert(sig == 'PATCH', "got bad signature: "..tostring(sig))
@@ -166,5 +166,5 @@ else
 		end
 	end
 
-	file[outfile] = data
+	file(outfile):write(data)
 end
