@@ -1,26 +1,41 @@
 #!/usr/bin/env luajit
+local file = require 'ext.file'
+local ffi = require 'ffi'
+local vector = require 'ffi.cpp.vector'
+local bit = bit or bit32 or require 'bit'
 
-local bit = bit32 or require 'bit'
+local datafile, patchfile, outfile, showall  = ...
+-- showall = if this is empty then truncate long output strings
+if not datafile or not patchfile or not outfile then
+	local expectedStr = 'expected ips <datafile> <patchfile> <outfile>\n'
+		..'got '..table.concat(arg, ' ')
+	io.stderr:write(expectedStr, '\n')
+	os.exit(1)
+end
 
-args = args or {...}
+local data = assert(file(datafile):read())
+local patch = assert(file(patchfile):read())
 
-require 'ext'
+local datav = vector('uint8_t', #data)
+ffi.copy(datav.v, data, #data)
 
-expectedStr = 'expected ips <datafile> <patchfile> <outfile>, got '..table.concat(args, ' ')
-datafile = assert(args[1], expectedStr)
-patchfile = assert(args[2], expectedStr)
-outfile = assert(args[3], expectedStr)
-local showall = args[4]	-- if this is empty then truncate long output strings
-
-data = assert(file(datafile):read())
-patch = assert(file(patchfile):read())
+-- can probably get by without allocating this ... meh
+local patchv = vector('uint8_t', #patch)
+ffi.copy(patchv.v, patch, #patch)
 
 local verbose = not ipsOnProgress -- if no callback then print
 
+ffi.cdef[[
+typedef struct {
+	uint8_t v[3];
+} uint24_t;
+]]
+assert(ffi.sizeof'uint24_t' == 3)
+
 -- coroutines plz
-patchIndex = 1
-function readPatchChunk(size)
-	local chunk = assert(patch:sub(patchIndex, patchIndex + size - 1), "stepped past the end of the file")
+local patchIndex = 0
+local function readPatchChunk(size)
+	local chunk = assert(patch:sub(patchIndex+1, patchIndex + size), "stepped past the end of the file")
 	patchIndex = patchIndex + size
 	if ipsOnProgress then	--external callback
 		ipsOnProgress(patchIndex,#patch)
@@ -28,7 +43,18 @@ function readPatchChunk(size)
 	return chunk
 end
 
-function rawToNumber(d)
+local function readPatchValue(ctype)
+	local size = ffi.sizeof(ctype)
+	assert(patchIndex >= 0 and patchIndex + size <= patchv.size, "stepped past the end of the file")
+	local value = ffi.cast(ctype..'*', patchv.v + patchIndex)[0]
+	patchIndex = patchIndex + size
+	if ipsOnProgress then	--external callback
+		ipsOnProgress(patchIndex,#patch)
+	end
+	return value
+end
+
+local function rawToNumber(d)
 	-- msb first
 	local v = 0
 	for i=1,#d do
@@ -39,7 +65,7 @@ function rawToNumber(d)
 end
 
 -- offset is 1-based
-function replaceSubset(d, repl, offset)
+local function replaceSubset(d, repl, offset)
 	if offset <= #d then
 		d = d:sub(1, offset-1) .. repl .. d:sub(offset + #repl)
 	else
@@ -48,13 +74,13 @@ function replaceSubset(d, repl, offset)
 	return d
 end
 
-function hex(v,s)
+local function hex(v,s)
 	if not s then s = 1 end
 	s = s * 2
 	return string.format('%.'..s..'x', v)
 end
 
-function strtohex(s, max)
+local function strtohex(s, max)
 	local d = ''
 	if showall or not max then
 		max = #s
@@ -69,11 +95,11 @@ function strtohex(s, max)
 	return d
 end
 
-function readVarInt()
+local function readVarInt()
 	local v = 0
 	local ofs = 1
 	while true do
-		local n = rawToNumber(readPatchChunk(1))
+		local n = readPatchValue'uint8_t'
 		v  = v + bit.band(n, 0x7f) * ofs
 		if bit.band(n, 0x80) ~= 0 then break end
 		ofs = bit.lshift(ofs, 7)
@@ -139,7 +165,9 @@ print'done'
 else
 	sig = sig .. readPatchChunk(1)
 	assert(sig == 'PATCH', "got bad signature: "..tostring(sig))
-
+	if verbose then
+		print('got sig '..sig)
+	end
 	while true do
 		local offset = readPatchChunk(3)
 		if offset == 'EOF' then
@@ -149,7 +177,7 @@ else
 			break
 		end	-- what if you want an offset that has this value? ips limitations...
 		offset = rawToNumber(offset)
-		local size = rawToNumber(readPatchChunk(2))
+		local size = readPatchValue'uint16_t'
 		if size > 0 then
 			local subpatch = readPatchChunk(size)
 			if verbose then
@@ -157,8 +185,8 @@ else
 			end
 			data = replaceSubset(data, subpatch, offset+1)
 		else	--RLE
-			local rleSize = rawToNumber(readPatchChunk(2))
-			local value = readPatchChunk(1)
+			local rleSize = readPatchValue'uint16_t'
+			local value = readPatchValue'uint8_t'
 			if verbose then
 				print('patching offset '..hex(offset, 3)..' size '..hex(size, 2)..' value '..strtohex(value))
 			end
