@@ -26,7 +26,7 @@ ffi.copy(patchv.v, patch, #patch)
 local verbose = not ipsOnProgress -- if no callback then print
 
 ffi.cdef[[
-typedef struct {
+typedef struct uint24_t {
 	uint8_t v[3];
 } uint24_t;
 ]]
