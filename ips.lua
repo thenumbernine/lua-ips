@@ -1,5 +1,5 @@
 #!/usr/bin/env luajit
-local file = require 'ext.file'
+local path = require 'ext.path'
 local ffi = require 'ffi'
 local vector = require 'ffi.cpp.vector'
 local bit = bit or bit32 or require 'bit'
@@ -13,8 +13,8 @@ if not datafile or not patchfile or not outfile then
 	os.exit(1)
 end
 
-local data = assert(file(datafile):read())
-local patch = assert(file(patchfile):read())
+local data = assert(path(datafile):read())
+local patch = assert(path(patchfile):read())
 
 local datav = vector('uint8_t', #data)
 ffi.copy(datav.v, data, #data)
@@ -161,7 +161,7 @@ print('ofs '..hex(writeOffset)..'/'..hex(targetsize)..' op '..op..' len '..hex(l
 		writeOffset = writeOffset + length
 	end
 print'done'	
-	file(outfile):write(target)
+	path(outfile):write(target)
 else
 	sig = sig .. readPatchChunk(1)
 	assert(sig == 'PATCH', "got bad signature: "..tostring(sig))
@@ -194,5 +194,5 @@ else
 		end
 	end
 
-	file(outfile):write(data)
+	path(outfile):write(data)
 end

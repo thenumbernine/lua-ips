@@ -9,8 +9,8 @@ modifiedFileName = assert(args[1], expectedStr)
 originalFileName = assert(args[2], expectedStr)
 patchFileName = assert(args[3], expectedStr)
 
-modifiedData = assert(file(modifiedFileName):read())
-originalData = assert(file(originalFileName):read())
+modifiedData = assert(path(modifiedFileName):read())
+originalData = assert(path(originalFileName):read())
 
 local nextModified, nextOriginal	-- chars, empty if EOF has been hit, nil if both EOFs have been hit
 local charProcessorIndex	-- zero-based
@@ -91,4 +91,4 @@ end
 patch:insert('EOF')
 patch = patch:concat()
 
-file(patchFileName):write(patch)
+path(patchFileName):write(patch)
