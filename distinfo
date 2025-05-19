@@ -1,0 +1,13 @@
+name = "ips"
+files = {
+	["README.md"] = "ips/README.md",
+	["addheader.lua"] = "ips/addheader.lua",
+	["ips-dev-1.rockspec"] = "ips/ips-dev-1.rockspec",
+	["ips.lua"] = "ips/ips.lua",
+	["makeips.lua"] = "ips/makeips.lua",
+}
+deps = {
+	"bit",
+	"ext",
+	"ffi",
+}
