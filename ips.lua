@@ -1,8 +1,9 @@
 #!/usr/bin/env luajit
-local path = require 'ext.path'
 local ffi = require 'ffi'
-local vector = require 'ffi.cpp.vector'
-local bit = bit or bit32 or require 'bit'
+local path = require 'ext.path'
+local number = require 'ext.number'
+local assert = require 'ext.assert'
+local vector = require 'ffi.cpp.vector-lua'
 
 local datafile, patchfile, outfile, showall  = ...
 -- showall = if this is empty then truncate long output strings
@@ -19,40 +20,7 @@ local patch = assert(path(patchfile):read())
 local datav = vector('uint8_t', #data)
 ffi.copy(datav.v, data, #data)
 
--- can probably get by without allocating this ... meh
-local patchv = vector('uint8_t', #patch)
-ffi.copy(patchv.v, patch, #patch)
-
 local verbose = not ipsOnProgress -- if no callback then print
-
-ffi.cdef[[
-typedef struct uint24_t {
-	uint8_t v[3];
-} uint24_t;
-]]
-assert(ffi.sizeof'uint24_t' == 3)
-
--- coroutines plz
-local patchIndex = 0
-local function readPatchChunk(size)
-	local chunk = assert(patch:sub(patchIndex+1, patchIndex + size), "stepped past the end of the file")
-	patchIndex = patchIndex + size
-	if ipsOnProgress then	--external callback
-		ipsOnProgress(patchIndex,#patch)
-	end
-	return chunk
-end
-
-local function readPatchValue(ctype)
-	local size = ffi.sizeof(ctype)
-	assert(patchIndex >= 0 and patchIndex + size <= patchv.size, "stepped past the end of the file")
-	local value = ffi.cast(ctype..'*', patchv.v + patchIndex)[0]
-	patchIndex = patchIndex + size
-	if ipsOnProgress then	--external callback
-		ipsOnProgress(patchIndex,#patch)
-	end
-	return value
-end
 
 local function rawToNumber(d)
 	-- msb first
@@ -62,6 +30,29 @@ local function rawToNumber(d)
 		v = v + d:sub(i,i):byte()
 	end
 	return v
+end
+
+-- coroutines plz
+local patchIndex = 0
+local function readPatchChunk(size)
+	local chunk = patch:sub(patchIndex+1, patchIndex + size)
+	assert.len(chunk, size, "readPatchChunk: stepped past the end of the file")
+	patchIndex = patchIndex + size
+	if ipsOnProgress then	--external callback
+		ipsOnProgress(patchIndex,#patch)
+	end
+	return chunk
+end
+
+local function readPatchValue(ctype)
+	local size = ffi.sizeof(ctype)
+	assert.le(patchIndex + size, #patch, "readPatchValue: stepped past the end of the patch file")
+	local value = rawToNumber(patch:sub(patchIndex+1, patchIndex + size))
+	patchIndex = patchIndex + size
+	if ipsOnProgress then	--external callback
+		ipsOnProgress(patchIndex,#patch)
+	end
+	return value
 end
 
 -- offset is 1-based
@@ -74,10 +65,9 @@ local function replaceSubset(d, repl, offset)
 	return d
 end
 
-local function hex(v,s)
-	if not s then s = 1 end
-	s = s * 2
-	return string.format('%.'..s..'x', v)
+local function hex(v, max)
+	local n = number.hex(v, max)
+	return ('0'):rep(max-#n)..n
 end
 
 local function strtohex(s, max)
@@ -114,15 +104,15 @@ if sig == 'BPS1' then
 	isBPS = true
 	print'file is BPS'
 	local datasize = readVarInt()
-	assert(datasize == #data, "data file should be size "..datasize.." but actually is size "..#data)
+	assert.len(data, datasize, "data file")
 	local targetsize = readVarInt()
 	local target = ('\0'):rep(targetsize)
-	assert(#target == targetsize)
+	assert.len(target, targetsize, "target")
 	local metadatasize = readVarInt()
 	local metadata = readPatchChunk(metadatasize)
-	assert(#metadata == metadatasize , "metadata should be size "..metadatasize.." but actually is size "..#metadata)
+	assert.len(metadata, metadatasize , "metadata")
 	print(metadata)
-	
+
 	local writeOffset = 0
 	local sourceRelativeOffset = 0
 	local targetRelativeOffset = 0
@@ -134,21 +124,21 @@ print('ofs '..hex(writeOffset)..'/'..hex(targetsize)..' op '..op..' len '..hex(l
 		if op == 0 then		-- source read
 			--target_buf[writeOffset:writeOffset+item.bytespan] = source_buf[writeOffset:writeOffset+item.bytespan]
 			target = replaceSubset(target, data:sub(writeOffset+1, writeOffset+length), writeOffset+1)
-			assert(#target == targetsize)
+			assert.len(target, targetsize, "target")
 		elseif op == 1 then	-- target read
 			local subpatch = readPatchChunk(length)
 			--target_buf[writeOffset:writeOffset+item.bytespan] = item.payload
 			target = replaceSubset(target, subpatch, writeOffset+1)
-			assert(#target == targetsize)
+			assert.len(target, targetsize, "target")
 		elseif op == 2 then	-- source copy
 			local raw_offset = readVarInt()
 			local offset = bit.rshift(raw_offset, 1)
 			if bit.band(raw_offset, 1) ~= 0 then offset = -offset end
-			sourceRelativeOffset = sourceRelativeOffset + offset 
+			sourceRelativeOffset = sourceRelativeOffset + offset
 			-- target_buf[writeOffset:writeOffset+item.bytespan] = source_buf[item.offset:item.offset+item.bytespan]
 			target = replaceSubset(target, data:sub(sourceRelativeOffset+1, sourceRelativeOffset+length), writeOffset+1)
-			assert(#target == targetsize)
-			sourceRelativeOffset = sourceRelativeOffset + length  
+			assert.len(target, targetsize, "target")
+			sourceRelativeOffset = sourceRelativeOffset + length
 		elseif op == 3 then	-- target copy
 			local raw_offset = readVarInt()
 			local offset = bit.rshift(raw_offset, 1)
@@ -160,11 +150,11 @@ print('ofs '..hex(writeOffset)..'/'..hex(targetsize)..' op '..op..' len '..hex(l
 		end
 		writeOffset = writeOffset + length
 	end
-print'done'	
+print'done'
 	path(outfile):write(target)
 else
 	sig = sig .. readPatchChunk(1)
-	assert(sig == 'PATCH', "got bad signature: "..tostring(sig))
+	assert.eq(sig, 'PATCH', "signature")
 	if verbose then
 		print('got sig '..sig)
 	end
@@ -178,6 +168,7 @@ else
 		end	-- what if you want an offset that has this value? ips limitations...
 		offset = rawToNumber(offset)
 		local size = readPatchValue'uint16_t'
+print('offset', number.hex(offset), 'size', number.hex(size))
 		if size > 0 then
 			local subpatch = readPatchChunk(size)
 			if verbose then
@@ -186,7 +177,7 @@ else
 			data = replaceSubset(data, subpatch, offset+1)
 		else	--RLE
 			local rleSize = readPatchValue'uint16_t'
-			local value = readPatchValue'uint8_t'
+			local value = readPatchChunk(1)
 			if verbose then
 				print('patching offset '..hex(offset, 3)..' size '..hex(size, 2)..' value '..strtohex(value))
 			end
