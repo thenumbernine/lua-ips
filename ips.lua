@@ -3,7 +3,7 @@ local ffi = require 'ffi'
 local path = require 'ext.path'
 local number = require 'ext.number'
 local assert = require 'ext.assert'
-local vector = require 'ffi.cpp.vector-lua'
+local vector = require 'stl.vector-lua'
 
 local datafile, patchfile, outfile, showall  = ...
 -- showall = if this is empty then truncate long output strings
